@@ -1,8 +1,29 @@
 # 6주차 실습 기록
 
 ## 사용한 에셋
-- 이미지: player_standing, kenney platformer-characters
-- 사운드: confirmation_001, kenney interface-sounds
+- 이미지: 우주선, 적 발사체 https://gvituri.itch.io/space-shooter, 운석 https://foozlecc.itch.io/void-environment-pack
+- 사운드: 운석 폭발, 적 공격 사운드 https://kenney.nl/assets/sci-fi-sounds, 패링, 우주선 폭발 사운드 https://pixabay.com/
 
 ## 사용한 AI 프롬포트
-- 
+
+1. 사운드를 재생하려면 어떻게 해야 하나요? 
+
+A. Base64 데이터를 디코딩해 pygame.mixer.Sound 객체로 생성한 뒤, 적 공격 로직 부분에서 .play()를 호출하면 됩니다.
+
+1. 패링 한 번당 하나의 공격만 막을 수 있게 하며, 패링 성공 시에 무적 프레임이 끝나게 하려면 어떻게 해야 하나요.
+
+A. 반사 성공 즉시 무적 타이머(parry_active_timer)를 0, 애니메이션(parry_anim_idx)을 -1로 초기화하여 패링 상태를 강제 종료하면 됩니다.
+
+## AI 답변에서 도움된 것
+
+AI를 이용하여 게임에서 버그 발생 시, 원인을 분석해주는 게 좋았다.
+예를 들어, 패링 반환이 되지 않아 물어보니 패링이 f키를 누르면 계속 발동되서 반환 후 즉시 사용되어 안된 것처럼 보였던 것이었다.
+
+## AI 답변을 수정하거나 버린 것
+
+텍스트의 높이와 위치, 스프라이트의 위치와 같은 경우 내가 직접 위치를 수정하였다.
+
+## 적용 결과
+- 잘 된 것: 게임이 부족한 점 없이 중간 과정이 잘 마무리 된 것 같다.
+- 어려웠던 것: 에셋을 찾는 과정이 힘들었다.
+- 다음에 시도할 것: 다음에는 스테이지를 늘려 적을 추가할 예정이다.
