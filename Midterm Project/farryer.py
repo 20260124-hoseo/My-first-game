@@ -72,8 +72,10 @@ MAGENTA= (255, 0, 255)
 
 # ⭐ --- 전체화면 및 800x600 가상 해상도 설정 --- ⭐
 # 1. 실제 모니터 해상도로 전체화면 생성
-real_screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-MONITOR_W, MONITOR_H = real_screen.get_size()
+info = pygame.display.Info() # 현재 모니터의 해상도 정보를 가져옵니다.
+MONITOR_W, MONITOR_H = info.current_w, info.current_h
+# pygame.NOFRAME을 사용하여 테두리가 없는 창을 화면 크기만큼 띄웁니다.
+real_screen = pygame.display.set_mode((MONITOR_W, MONITOR_H), pygame.NOFRAME)
 pygame.display.set_caption("Parryer")
 
 # 2. 게임의 모든 논리가 그려질 800x600 가상 도화지 생성
