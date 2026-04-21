@@ -13,13 +13,12 @@ def _asset(*parts): return os.path.join(BASE_DIR, *parts)
 
 
 
-
 def load_sprites(file_path, frames_count, orig_w, orig_h, target_w, target_h, cols=None):
     sheet = pygame.image.load(file_path).convert_alpha()
-    
+
     if cols is None:
         cols = frames_count
-        
+
     frames = []
     for i in range(frames_count):
         row, col = divmod(i, cols)
@@ -33,12 +32,13 @@ def load_sprites(file_path, frames_count, orig_w, orig_h, target_w, target_h, co
 WIDTH, HEIGHT = 800, 600
 FPS = 60
 
-PLAYER_W, PLAYER_H = 50, 50 
-PIXEL_SCALE = PLAYER_W / 8  
-PARRY_SIZE = int(16 * PIXEL_SCALE) 
+PLAYER_W, PLAYER_H = 50, 50
+PIXEL_SCALE = PLAYER_W / 8
+PARRY_SIZE = int(16 * PIXEL_SCALE)
 ENEMY_W, ENEMY_H = 30, 30
 E_SHIP_W, E_SHIP_H = 40, 40
 M_SHIP_W, M_SHIP_H = 96, 96
+BOSS_W, BOSS_H = 128, 128
 PARRY_RADIUS = (math.hypot(PLAYER_W, PLAYER_H) / 2) * 1.4
 
 # --- 운석 랜더링 계산 ---
@@ -67,7 +67,7 @@ real_screen = pygame.display.set_mode((MONITOR_W, MONITOR_H), pygame.NOFRAME)
 pygame.display.set_caption("Parryer")
 
 # 2. 게임의 모든 논리가 그려질 800x600 가상 도화지 생성
-screen = pygame.Surface((WIDTH, HEIGHT)) 
+screen = pygame.Surface((WIDTH, HEIGHT))
 
 # 3. 화면 비율(Aspect Ratio) 유지용 레터박스 계산
 scale_x = MONITOR_W / WIDTH
@@ -130,7 +130,7 @@ try:
     MISSILE_SHIP_IMAGES  = load_sprites(_asset("sprites", "missile_ship.png"), 12, 64, 64, M_SHIP_W, M_SHIP_H, cols=12)
     MISSILE_FLAME_IMAGES = load_sprites(_asset("sprites", "missile_ship_flame.png"), 8, 64, 64, M_SHIP_W, M_SHIP_H, cols=8)
 
-    EXPLOSION_IMAGES = load_sprites(_asset("sprites", "enemy_boom.png"), 6, 8, 8, 40, 40, cols=3) 
+    EXPLOSION_IMAGES = load_sprites(_asset("sprites", "enemy_boom.png"), 6, 8, 8, 40, 40, cols=3)
     ORANGE_EXP = EXPLOSION_IMAGES[0:3]
     BLUE_EXP = EXPLOSION_IMAGES[3:6]
 
@@ -141,6 +141,12 @@ try:
     BANG_IMG = pygame.image.load(_asset("sprites", "bang.png")).convert_alpha()
     _BOSS_BOOM_SZ = int(M_SHIP_W * 0.75)
     BOSS_BOOM_IMAGES = load_sprites(_asset("sprites", "boss_boom.png"), 8, 32, 32, _BOSS_BOOM_SZ, _BOSS_BOOM_SZ, cols=8)
+
+    BOSS_IMAGES         = load_sprites(_asset("sprites", "boss.png"),         34, 128, 128, BOSS_W, BOSS_H, cols=34)
+    BOSS_DIE_IMAGES     = load_sprites(_asset("sprites", "boss_die.png"),     18, 128, 128, BOSS_W, BOSS_H, cols=18)
+    BOSS_FLAME_IMAGES   = load_sprites(_asset("sprites", "boss_flame.png"),    8, 128, 128, BOSS_W, BOSS_H, cols=8)
+    BOSS_ABILITY_IMAGES = load_sprites(_asset("sprites", "boss_ability.png"),  8, 128, 128, BOSS_W, BOSS_H, cols=8)
+    LASER_IMGS_BOSS     = load_sprites(_asset("sprites", "laser.png"),         4,  18,  38, 18, 38, cols=4)
 
     ENEMY_ATTACK_SOUND = pygame.mixer.Sound(_asset("sounds", "laserSmall_002.ogg"))
 
@@ -205,7 +211,7 @@ def draw_bg_layers():
 PARRY_SEQ = [3, 3, 3, 3, 2, 2, 2, 1, 1, 0]
 
 DIFF_SETTINGS = {"spawn": 40, "attack_min": 1, "attack_max": 8, "proj_speed": 1.0,
-                 "m_attack_min": 8, "m_attack_max": 16, "m_proj_speed": 1.0, "m_hp": 5}
+                 "m_attack_min": 8, "m_attack_max": 16, "m_proj_speed": 1.0, "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 6}
 
 LEVELS = [
     {"min_speed": 3, "max_speed": 5,  "spawn": 40, "label": "Stage: 1"}, # 속도 원상 복구
@@ -217,7 +223,7 @@ class Explosion:
         self.frames = frames
         self.frame_idx = 0
         self.timer = 0
-        self.delay = int(0.05 * FPS) 
+        self.delay = int(0.05 * FPS)
         self.image = self.frames[0]
         self.rect = self.image.get_rect(center=center)
         self.active = True
@@ -241,14 +247,14 @@ class Meteor:
     def __init__(self, x, y, w, h, speed):
         self.rect = pygame.Rect(x, y, w, h)
         self.speed = speed
-        self.active = True 
-        self.frame = 0     
+        self.active = True
+        self.frame = 0
         self.anim_timer = 0
-        self.frame_delay = int(0.05 * FPS) 
+        self.frame_delay = int(0.05 * FPS)
 
     def destroy(self):
         self.active = False
-        self.frame = 1 
+        self.frame = 1
 
     def update(self):
         if self.active:
@@ -455,23 +461,264 @@ class Missile:
         rotated = pygame.transform.rotate(img, angle)
         surface.blit(rotated, rotated.get_rect(center=self.rect.center))
 
+# --- 보스 클래스 ---
+class Boss:
+    def __init__(self):
+        self.w = BOSS_W
+        self.h = BOSS_H
+        self.x = float(WIDTH // 2 - self.w // 2)
+        self.y = float(-self.h)
+        self.target_x = float(WIDTH // 2 - self.w // 2)
+        self.target_y = 60.0
+        self.speed = 2.0
+        self.hb_ox = 25
+        self.hb_oy = 12
+        self.hb_w  = BOSS_W - 50
+        self.hb_h  = BOSS_H - 25
+        self.rect = pygame.Rect(int(self.x) + self.hb_ox, int(self.y) + self.hb_oy, self.hb_w, self.hb_h)
+        self.is_in_position = False
+
+        self.max_hp = DIFF_SETTINGS["boss_hp"]
+        self.hp = self.max_hp
+        self.invincible = 0
+
+        self.anim_frame = 0
+        self.anim_timer = 0
+        self.flame_frame = 0
+        self.flame_timer = 0
+        self.hp_bar_timer = 0
+
+        self.attack_phase = 'idle'
+        self.attack_timer = DIFF_SETTINGS["boss_attack_interval"] * FPS
+        self.boss_draw_angle = 0.0
+        self.rotation_timer = 0
+        self.fire_angle = math.pi / 2
+        self.laser_timer = 0
+        self.laser_frame = 0
+        self.laser_frame_timer = 0
+
+        self.dying = False
+        self.die_frame = 0
+        self.die_timer = 0
+        self.active = True
+
+        self.summon_timer = 0
+        self.ability_frame = 0
+        self.ability_timer = 0
+        self.summon_event = False
+
+    def _laser_exit(self, cx, cy, angle):
+        dx, dy = math.cos(angle), math.sin(angle)
+        candidates = []
+        if abs(dx) > 1e-6:
+            candidates.append(((WIDTH - cx) / dx) if dx > 0 else (-cx / dx))
+        if abs(dy) > 1e-6:
+            candidates.append(((HEIGHT - cy) / dy) if dy > 0 else (-cy / dy))
+        t = min((t for t in candidates if t >= 0), default=0)
+        return cx + dx * t, cy + dy * t
+
+    def update(self, player_rect):
+        if not self.active:
+            return
+        self.summon_event = False
+        if self.invincible > 0:
+            self.invincible -= 1
+        if self.hp_bar_timer > 0:
+            self.hp_bar_timer -= 1
+
+        if not self.is_in_position:
+            dx = self.target_x - self.x
+            dy = self.target_y - self.y
+            dist = math.hypot(dx, dy)
+            if dist > self.speed:
+                self.x += (dx / dist) * self.speed
+                self.y += (dy / dist) * self.speed
+            else:
+                self.x = self.target_x
+                self.y = self.target_y
+                self.is_in_position = True
+        self.rect.x = int(self.x) + self.hb_ox
+        self.rect.y = int(self.y) + self.hb_oy
+
+        if self.dying:
+            self.die_timer += 1
+            if self.die_timer >= 10:
+                self.die_timer = 0
+                self.die_frame += 1
+                if self.die_frame >= 18:
+                    self.active = False
+            return
+
+        self.flame_timer += 1
+        if self.flame_timer >= 3:
+            self.flame_timer = 0
+            self.flame_frame = (self.flame_frame + 1) % 8
+
+        if not self.is_in_position:
+            return
+
+        # 공격 상태머신
+        if self.attack_phase == 'idle':
+            self.rotation_timer += 1
+            if self.rotation_timer >= 6:
+                self.rotation_timer = 0
+                if abs(self.boss_draw_angle) > 0.5:
+                    self.boss_draw_angle -= 1.0 if self.boss_draw_angle > 0 else -1.0
+                else:
+                    self.boss_draw_angle = 0.0
+
+            if self.summon_timer > 0:
+                self.summon_timer -= 1
+                if self.summon_timer == 0:
+                    self.attack_phase = 'ability'
+                    self.ability_frame = 0
+                    self.ability_timer = 0
+            else:
+                self.attack_timer -= 1
+                if self.attack_timer <= 0:
+                    self.attack_phase = 'aiming'
+                    self.anim_frame = 1
+                    self.anim_timer = 0
+                    self.rotation_timer = 0
+
+        elif self.attack_phase == 'aiming':
+            # 0.2초(12프레임)마다 1도씩 플레이어 방향으로 회전
+            cx = int(self.x) + BOSS_W // 2
+            cy = int(self.y) + BOSS_H // 2
+            px, py = player_rect.center
+            target_angle = 90 - math.degrees(math.atan2(py - cy, px - cx))
+            self.rotation_timer += 1
+            if self.rotation_timer >= DIFF_SETTINGS["boss_rotation_interval"]:
+                self.rotation_timer = 0
+                diff = target_angle - self.boss_draw_angle
+                while diff > 180: diff -= 360
+                while diff < -180: diff += 360
+                if abs(diff) > 0.5:
+                    self.boss_draw_angle += 1.0 if diff > 0 else -1.0
+            self.anim_timer += 1
+            if self.anim_timer >= 10:
+                self.anim_timer = 0
+                self.anim_frame += 1
+                if self.anim_frame >= 21:
+                    self.anim_frame = 21
+                    self.fire_angle = math.radians(90 - self.boss_draw_angle)
+                    self.laser_timer = 45
+                    self.attack_phase = 'firing'
+
+        elif self.attack_phase == 'firing':
+            self.laser_frame_timer += 1
+            if self.laser_frame_timer >= 6:
+                self.laser_frame_timer = 0
+                self.laser_frame = (self.laser_frame + 1) % 4
+            self.laser_timer -= 1
+            if self.laser_timer <= 0:
+                self.attack_phase = 'recovering'
+                self.anim_frame = 22
+                self.anim_timer = 0
+
+        elif self.attack_phase == 'recovering':
+            self.laser_frame_timer += 1
+            if self.laser_frame_timer >= 6:
+                self.laser_frame_timer = 0
+                self.laser_frame = (self.laser_frame + 1) % 4
+            self.anim_timer += 1
+            if self.anim_timer >= 8:
+                self.anim_timer = 0
+                self.anim_frame += 1
+                if self.anim_frame >= 34:
+                    self.anim_frame = 0
+                    self.rotation_timer = 0
+                    self.attack_phase = 'idle'
+                    self.attack_timer = DIFF_SETTINGS["boss_attack_interval"] * FPS
+                    self.summon_timer = 6 * FPS
+
+        elif self.attack_phase == 'ability':
+            self.ability_timer += 1
+            if self.ability_timer >= 6:
+                self.ability_timer = 0
+                self.ability_frame += 1
+                if self.ability_frame >= 8:
+                    self.ability_frame = 7
+                    self.summon_event = True
+                    self.attack_phase = 'idle'
+
+    def take_damage(self, dmg=1):
+        if self.invincible > 0 or self.dying:
+            return False
+        self.hp -= dmg
+        self.invincible = 30
+        self.hp_bar_timer = 3 * FPS
+        if self.hp <= 0:
+            self.hp = 0
+            self.dying = True
+            return True
+        return False
+
+    def draw(self, surface):
+        if not self.active:
+            return
+        sprite_cx = int(self.x) + BOSS_W // 2
+        sprite_cy = int(self.y) + BOSS_H // 2
+
+        if self.attack_phase == 'ability':
+            ability_img = pygame.transform.rotate(BOSS_ABILITY_IMAGES[self.ability_frame], self.boss_draw_angle)
+            surface.blit(ability_img, ability_img.get_rect(center=(sprite_cx, sprite_cy)))
+
+        if not self.dying:
+            flame_img = pygame.transform.rotate(BOSS_FLAME_IMAGES[self.flame_frame], self.boss_draw_angle)
+            surface.blit(flame_img, flame_img.get_rect(center=(sprite_cx, sprite_cy)))
+
+        if self.dying:
+            if self.die_frame < 18:
+                die_img = pygame.transform.rotate(BOSS_DIE_IMAGES[self.die_frame], self.boss_draw_angle)
+                surface.blit(die_img, die_img.get_rect(center=(sprite_cx, sprite_cy)))
+        else:
+            boss_img = pygame.transform.rotate(BOSS_IMAGES[self.anim_frame], self.boss_draw_angle)
+            surface.blit(boss_img, boss_img.get_rect(center=(sprite_cx, sprite_cy)))
+
+        if self.attack_phase in ('firing', 'recovering'):
+            laser_img = LASER_IMGS_BOSS[self.laser_frame]
+            cannon_reach = self.hb_oy + self.hb_h - BOSS_H // 2 -10
+            theta = math.radians(self.boss_draw_angle)
+            cx = int(sprite_cx + cannon_reach * math.sin(theta))
+            cy = int(sprite_cy + cannon_reach * math.cos(theta))
+            ex, ey = self._laser_exit(cx, cy, self.fire_angle)
+            beam_len = int(math.hypot(ex - cx, ey - cy)) + 1
+            if beam_len > 0:
+                beam_surf = pygame.Surface((18, beam_len), pygame.SRCALPHA)
+                for i in range(0, beam_len, 38):
+                    beam_surf.blit(laser_img, (0, i))
+                rot_angle = 90 - math.degrees(self.fire_angle)
+                rotated = pygame.transform.rotate(beam_surf, rot_angle)
+                surface.blit(rotated, rotated.get_rect(center=((cx + ex) // 2, (cy + ey) // 2)))
+
+        if self.hp_bar_timer > 0:
+            bar_w = self.hb_w
+            bar_h = 6
+            bar_x = self.rect.x
+            bar_y = self.rect.bottom + 4
+            pygame.draw.rect(surface, RED, (bar_x, bar_y, bar_w, bar_h))
+            green_w = int(bar_w * self.hp / self.max_hp)
+            if green_w > 0:
+                pygame.draw.rect(surface, GREEN, (bar_x, bar_y, green_w, bar_h))
+
 # --- 적 투사체 클래스 ---
 class EnemyAttack:
     def __init__(self, ship):
         self.ship = ship
         self.w = ATTACK_W
         self.h = ATTACK_H
-        
+
         self.x = ship.rect.centerx - self.w // 2
         self.y = ship.rect.bottom
         self.rect = pygame.Rect(int(self.x), int(self.y), self.w, self.h)
-        
-        self.charge_timer = 1 * FPS 
+
+        self.charge_timer = 1 * FPS
         self.dx = 0
         self.dy = 0
         self.speed = 6 * DIFF_SETTINGS["proj_speed"]
         self.active = True
-        self.reflected = False 
+        self.reflected = False
 
     def update(self, current_player_rect):
         if self.charge_timer > 0:
@@ -480,7 +727,7 @@ class EnemyAttack:
                 self.x = self.ship.rect.centerx - self.w // 2
                 self.y = self.ship.rect.bottom
             self.rect.topleft = (int(self.x), int(self.y))
-            
+
             if self.charge_timer == 0:
                 if self.ship not in enemy_ships:
                     self.active = False
@@ -494,10 +741,10 @@ class EnemyAttack:
             self.x += self.dx
             self.y += self.dy
             self.rect.topleft = (int(self.x), int(self.y))
-            
+
             if self.y > HEIGHT + 50 or self.y < -50 or self.x < -50 or self.x > WIDTH + 50:
                 self.active = False
-    
+
     def draw(self, surface):
         surface.blit(ATTACK_IMG, self.rect)
 
@@ -547,9 +794,9 @@ def difficulty_screen():
     btn_normal = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 10, 200, 50)
     btn_hard   = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 + 60, 200, 50)
     diffs = {
-        "easy":   {"spawn": 40, "attack_min": 1, "attack_max": 12, "proj_speed": 0.75, "m_attack_min": 5,  "m_attack_max": 15, "m_proj_speed": 0.75, "m_hp": 3},
-        "normal": {"spawn": 27, "attack_min": 1, "attack_max": 8,  "proj_speed": 1.0,  "m_attack_min": 4,  "m_attack_max": 12, "m_proj_speed": 1.0,  "m_hp": 5},
-        "hard":   {"spawn": 20, "attack_min": 1, "attack_max": 4,  "proj_speed": 1.25, "m_attack_min": 3,  "m_attack_max": 9,  "m_proj_speed": 1.25, "m_hp": 7},
+        "easy":   {"spawn": 40, "attack_min": 1, "attack_max": 12, "proj_speed": 0.75, "m_attack_min": 5,  "m_attack_max": 15, "m_proj_speed": 0.75, "m_hp": 3, "boss_hp": 10, "boss_attack_interval": 19, "boss_rotation_interval": 12, "difficulty": "easy"},
+        "normal": {"spawn": 27, "attack_min": 1, "attack_max": 8,  "proj_speed": 1.0,  "m_attack_min": 4,  "m_attack_max": 12, "m_proj_speed": 1.0,  "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 6,  "difficulty": "normal"},
+        "hard":   {"spawn": 20, "attack_min": 1, "attack_max": 4,  "proj_speed": 1.25, "m_attack_min": 3,  "m_attack_max": 9,  "m_proj_speed": 1.25, "m_hp": 7, "boss_hp": 20, "boss_attack_interval": 13, "boss_rotation_interval": 3,  "difficulty": "hard"},
     }
     while True:
         clock.tick(FPS)
@@ -601,22 +848,22 @@ def stage_select_screen():
 
 def game_over_screen(score):
     screen.fill(GRAY)
-    
+
     # 텍스트들을 800x600 가상 화면 정중앙을 기준으로 동적 정렬
     t1 = font_big.render("GAME OVER", True, RED)
     t2 = font.render(f"Score: {score}", True, WHITE)
     t3 = font.render("R: Restart   Q/ESC: Quit", True, WHITE)
-    
+
     screen.blit(t1, t1.get_rect(center=(WIDTH//2, HEIGHT//2 - 60)))
     screen.blit(t2, t2.get_rect(center=(WIDTH//2, HEIGHT//2 + 20)))
     screen.blit(t3, t3.get_rect(center=(WIDTH//2, HEIGHT//2 + 70)))
-    
+
     # 레터박스 렌더링 적용
     real_screen.fill((0, 0, 0))
     scaled_surface = pygame.transform.scale(screen, (SCALED_W, SCALED_H))
     real_screen.blit(scaled_surface, (OFFSET_X, OFFSET_Y))
     pygame.display.flip()
-    
+
     while True:
         for e in pygame.event.get():
             if e.type == pygame.QUIT: pygame.quit(); sys.exit()
@@ -626,7 +873,7 @@ def game_over_screen(score):
 
 def main(start_stage=1):
     global enemy_ships
-    
+
     # 시작 Y 좌표 원상 복구
     player_rect = pygame.Rect(WIDTH // 2 - PLAYER_W // 2, HEIGHT - 100, PLAYER_W, PLAYER_H)
     meteors = []
@@ -635,6 +882,7 @@ def main(start_stage=1):
     explosions = []
     missile_ships = []
     missiles = []
+    bosses = []
     god_mode = False
 
     score = 0
@@ -648,12 +896,12 @@ def main(start_stage=1):
     stage2_spawned = False
     stage2_missile_timer = 0
     meteor_spawn_timer = 0
-    
+
     parry_cooldown = 0
-    parry_anim_idx = -1 
+    parry_anim_idx = -1
     parry_anim_timer = 0
-    parry_active_timer = 0 
-    
+    parry_active_timer = 0
+
     show_hitbox = False
     level_cfg = {"min_speed": 3, "max_speed": 5, "spawn": DIFF_SETTINGS["spawn"], "label": "Stage: 1"}
 
@@ -698,15 +946,17 @@ def main(start_stage=1):
     if start_stage >= 3:
         spawn_stage3()
 
+    bosses.append(Boss())  # 테스트용: Stage 1 시작 시 보스 스폰
+
     while True:
         clock.tick(FPS)
         update_bg_layers()
         draw_bg_layers()
-        
+
         for e in pygame.event.get():
             if e.type == pygame.QUIT: pygame.quit(); sys.exit()
             if e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_ESCAPE: 
+                if e.key == pygame.K_ESCAPE:
                     pygame.quit(); sys.exit()
                 if e.key == pygame.K_d:
                     show_hitbox = not show_hitbox
@@ -720,10 +970,10 @@ def main(start_stage=1):
                     PARRY_SOUND.play()
 
         stage_timer += 1
-        
+
         if parry_cooldown > 0: parry_cooldown -= 1
         if parry_active_timer > 0: parry_active_timer -= 1
-            
+
         if parry_anim_idx >= 0:
             parry_anim_timer += 1
             if parry_anim_timer >= 3:
@@ -746,7 +996,7 @@ def main(start_stage=1):
             player_rect.x += 5
             current_image = PLAYER_IMAGES[2]
             flame_offset_x = PIXEL_SCALE
-        
+
         if keys[pygame.K_UP] and player_rect.top > 0: player_rect.y -= 5
         if keys[pygame.K_DOWN] and player_rect.bottom < HEIGHT: player_rect.y += 5
 
@@ -803,10 +1053,14 @@ def main(start_stage=1):
         for atk in enemy_attacks:
             atk.update(player_rect)
         enemy_attacks = [atk for atk in enemy_attacks if atk.active]
-        
+
         for exp in explosions:
             exp.update()
         explosions = [exp for exp in explosions if exp.active]
+
+        for boss in bosses:
+            boss.update(player_rect)
+        bosses = [b for b in bosses if b.active]
 
         survived_meteors = []
         for m in meteors:
@@ -846,6 +1100,14 @@ def main(start_stage=1):
                         m.destroy()
                         score += 10
                         METEOR_SOUND.play()
+                for boss in bosses[:]:
+                    if boss.invincible == 0 and atk.rect.colliderect(boss.rect):
+                        killed = boss.take_damage(1)
+                        explosions.append(Explosion(atk.rect.center, BLUE_EXP))
+                        EXPLOSION_SOUND.play()
+                        if killed:
+                            explosions.append(Explosion(boss.rect.center, BOSS_BOOM_IMAGES))
+                            score += 500
 
         for mis in missiles:
             if mis.active and mis.reflected:
@@ -866,6 +1128,14 @@ def main(start_stage=1):
                             explosions.append(Explosion(ms.rect.center, BOSS_BOOM_IMAGES))
                             missile_ships.remove(ms)
                             score += 100
+                for boss in bosses[:]:
+                    if boss.invincible == 0 and mis.rect.colliderect(boss.rect):
+                        killed = boss.take_damage(1)
+                        explosions.append(Explosion(mis.rect.center, BLUE_EXP))
+                        EXPLOSION_SOUND.play()
+                        if killed:
+                            explosions.append(Explosion(boss.rect.center, BOSS_BOOM_IMAGES))
+                            score += 500
 
         # --- 플레이어 피격 판정 ---
         can_take_damage = not god_mode and invincible == 0
@@ -888,7 +1158,7 @@ def main(start_stage=1):
                     parry_active_timer = 0
                     parry_anim_idx = -1
                 elif can_take_damage:
-                    hit = True
+                    hit =	 True
                     atk.active = False
                     break
 
@@ -922,6 +1192,30 @@ def main(start_stage=1):
                         break
 
         if not hit:
+            for boss in bosses:
+                if not boss.dying and player_rect.colliderect(boss.rect):
+                    if parry_active_timer > 0:
+                        pass
+                    elif can_take_damage:
+                        hit = True
+                        break
+
+        if not hit:
+            for boss in bosses:
+                if not boss.dying and boss.attack_phase in ('firing', 'recovering'):
+                    _sprite_cx = int(boss.x) + BOSS_W // 2
+                    _sprite_cy = int(boss.y) + BOSS_H // 2
+                    _reach = boss.hb_oy + boss.hb_h - BOSS_H // 2
+                    _theta = math.radians(boss.boss_draw_angle)
+                    _lcx = int(_sprite_cx + _reach * math.sin(_theta))
+                    _lcy = int(_sprite_cy + _reach * math.cos(_theta))
+                    _lex, _ley = boss._laser_exit(_lcx, _lcy, boss.fire_angle)
+                    if player_rect.clipline(_lcx, _lcy, int(_lex), int(_ley)):
+                        if can_take_damage:
+                            hit = True
+                            break
+
+        if not hit:
             for mis in missiles:
                 if mis.active and not mis.reflected and player_rect.colliderect(mis.rect):
                     if parry_active_timer > 0:
@@ -953,12 +1247,15 @@ def main(start_stage=1):
             flame_x = player_rect.x + flame_offset_x
             flame_y = player_rect.bottom - PIXEL_SCALE
             screen.blit(FLAME_IMAGES[flame_frame_idx], (flame_x, flame_y))
-            
+
             if parry_anim_idx >= 0:
                 frame_number = PARRY_SEQ[parry_anim_idx]
                 parry_img = PARRY_IMAGES[frame_number]
                 parry_rect = parry_img.get_rect(center=player_rect.center)
                 screen.blit(parry_img, parry_rect)
+
+        for boss in bosses:
+            boss.draw(screen)
 
         for ms in missile_ships:
             ms.draw(screen)
@@ -974,7 +1271,7 @@ def main(start_stage=1):
 
         for m in meteors:
             m.draw(screen)
-            
+
         for exp in explosions:
             exp.draw(screen)
 
@@ -990,23 +1287,25 @@ def main(start_stage=1):
             for atk in enemy_attacks:
                 color = CYAN if atk.reflected else MAGENTA
                 pygame.draw.rect(screen, color, atk.rect, 2)
+            for boss in bosses:
+                pygame.draw.rect(screen, CYAN, boss.rect, 2)
 
         draw_hud(score, level_cfg, lives, parry_cooldown)
-        
+
         # 가상 화면(800x600)에 흔들림 적용
         ox, oy = get_shake_offset()
         if ox != 0 or oy != 0:
             shaken_screen = screen.copy()
             screen.fill((0, 0, 0))
             screen.blit(shaken_screen, (ox, oy))
-            
+
         # 완성된 가상 화면을 유저 모니터에 맞춰 레터박스 스케일링 후 출력
         real_screen.fill((0, 0, 0)) # 좌우/상하 남는 여백(레터박스)
         scaled_surface = pygame.transform.scale(screen, (SCALED_W, SCALED_H))
         real_screen.blit(scaled_surface, (OFFSET_X, OFFSET_Y))
-            
+
         pygame.display.flip()
-        
+
 if __name__ == "__main__":
     while True:
         title_screen()
