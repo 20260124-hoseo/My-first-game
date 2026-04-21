@@ -157,6 +157,12 @@ try:
 
     EXPLOSION_SOUND = pygame.mixer.Sound(_asset("sounds", "enemy_boom.mp3"))
     EXPLOSION_SOUND.set_volume(0.5)
+
+    BOSS_CHARGE_SOUND = pygame.mixer.Sound(_asset("sounds", "charge.mp3"))
+    BOSS_LASER_SOUND  = pygame.mixer.Sound(_asset("sounds", "laser.mp3"))
+    PLAYER_HIT_SOUND  = pygame.mixer.Sound(_asset("sounds", "hit.mp3"))
+    BOSS_SPAWN_SOUND  = pygame.mixer.Sound(_asset("sounds", "spawn.mp3"))
+    MISSILE_SOUND     = pygame.mixer.Sound(_asset("sounds", "missile.mp3"))
 except NameError:
     pass
 
@@ -211,7 +217,7 @@ def draw_bg_layers():
 PARRY_SEQ = [3, 3, 3, 3, 2, 2, 2, 1, 1, 0]
 
 DIFF_SETTINGS = {"spawn": 40, "attack_min": 1, "attack_max": 8, "proj_speed": 1.0,
-                 "m_attack_min": 8, "m_attack_max": 16, "m_proj_speed": 1.0, "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 6}
+                 "m_attack_min": 8, "m_attack_max": 16, "m_proj_speed": 1.0, "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 6, "boss_rotation_step": 1}
 
 LEVELS = [
     {"min_speed": 3, "max_speed": 5,  "spawn": 40, "label": "Stage: 1"}, # 속도 원상 복구
@@ -560,10 +566,11 @@ class Boss:
         # 공격 상태머신
         if self.attack_phase == 'idle':
             self.rotation_timer += 1
-            if self.rotation_timer >= 6:
+            if self.rotation_timer >= DIFF_SETTINGS["boss_rotation_interval"]:
                 self.rotation_timer = 0
-                if abs(self.boss_draw_angle) > 0.5:
-                    self.boss_draw_angle -= 1.0 if self.boss_draw_angle > 0 else -1.0
+                step = DIFF_SETTINGS["boss_rotation_step"]
+                if abs(self.boss_draw_angle) > step - 0.5:
+                    self.boss_draw_angle -= step if self.boss_draw_angle > 0 else -step
                 else:
                     self.boss_draw_angle = 0.0
 
@@ -573,6 +580,7 @@ class Boss:
                     self.attack_phase = 'ability'
                     self.ability_frame = 0
                     self.ability_timer = 0
+                    BOSS_SPAWN_SOUND.play()
             else:
                 self.attack_timer -= 1
                 if self.attack_timer <= 0:
@@ -580,6 +588,7 @@ class Boss:
                     self.anim_frame = 1
                     self.anim_timer = 0
                     self.rotation_timer = 0
+                    BOSS_CHARGE_SOUND.play()
 
         elif self.attack_phase == 'aiming':
             # 0.2초(12프레임)마다 1도씩 플레이어 방향으로 회전
@@ -593,17 +602,19 @@ class Boss:
                 diff = target_angle - self.boss_draw_angle
                 while diff > 180: diff -= 360
                 while diff < -180: diff += 360
+                step = DIFF_SETTINGS["boss_rotation_step"]
                 if abs(diff) > 0.5:
-                    self.boss_draw_angle += 1.0 if diff > 0 else -1.0
+                    self.boss_draw_angle += min(step, abs(diff)) * (1 if diff > 0 else -1)
             self.anim_timer += 1
             if self.anim_timer >= 10:
                 self.anim_timer = 0
                 self.anim_frame += 1
-                if self.anim_frame >= 21:
-                    self.anim_frame = 21
+                if self.anim_frame >= 22:
+                    self.anim_frame = 22
                     self.fire_angle = math.radians(90 - self.boss_draw_angle)
                     self.laser_timer = 45
                     self.attack_phase = 'firing'
+                    BOSS_LASER_SOUND.play()
 
         elif self.attack_phase == 'firing':
             self.laser_frame_timer += 1
@@ -794,9 +805,9 @@ def difficulty_screen():
     btn_normal = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 10, 200, 50)
     btn_hard   = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 + 60, 200, 50)
     diffs = {
-        "easy":   {"spawn": 40, "attack_min": 1, "attack_max": 12, "proj_speed": 0.75, "m_attack_min": 5,  "m_attack_max": 15, "m_proj_speed": 0.75, "m_hp": 3, "boss_hp": 10, "boss_attack_interval": 19, "boss_rotation_interval": 12, "difficulty": "easy"},
-        "normal": {"spawn": 27, "attack_min": 1, "attack_max": 8,  "proj_speed": 1.0,  "m_attack_min": 4,  "m_attack_max": 12, "m_proj_speed": 1.0,  "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 6,  "difficulty": "normal"},
-        "hard":   {"spawn": 20, "attack_min": 1, "attack_max": 4,  "proj_speed": 1.25, "m_attack_min": 3,  "m_attack_max": 9,  "m_proj_speed": 1.25, "m_hp": 7, "boss_hp": 20, "boss_attack_interval": 13, "boss_rotation_interval": 3,  "difficulty": "hard"},
+        "easy":   {"spawn": 40, "attack_min": 1, "attack_max": 12, "proj_speed": 0.75, "m_attack_min": 5,  "m_attack_max": 15, "m_proj_speed": 0.75, "m_hp": 3, "boss_hp": 10, "boss_attack_interval": 19, "boss_rotation_interval": 12, "boss_rotation_step": 1, "difficulty": "easy"},
+        "normal": {"spawn": 27, "attack_min": 1, "attack_max": 8,  "proj_speed": 1.0,  "m_attack_min": 4,  "m_attack_max": 12, "m_proj_speed": 1.0,  "m_hp": 5, "boss_hp": 15, "boss_attack_interval": 16, "boss_rotation_interval": 9,  "boss_rotation_step": 2, "difficulty": "normal"},
+        "hard":   {"spawn": 20, "attack_min": 1, "attack_max": 4,  "proj_speed": 1.25, "m_attack_min": 3,  "m_attack_max": 9,  "m_proj_speed": 1.25, "m_hp": 7, "boss_hp": 20, "boss_attack_interval": 13, "boss_rotation_interval": 3,  "boss_rotation_step": 1, "difficulty": "hard"},
     }
     while True:
         clock.tick(FPS)
@@ -845,6 +856,29 @@ def stage_select_screen():
         real_screen.fill((0, 0, 0))
         real_screen.blit(pygame.transform.scale(screen, (SCALED_W, SCALED_H)), (OFFSET_X, OFFSET_Y))
         pygame.display.flip()
+
+def you_win_screen(score):
+    while True:
+        clock.tick(FPS)
+        update_bg_layers()
+        draw_bg_layers()
+
+        t1 = font_big.render("YOU WIN!", True, YELLOW)
+        t2 = font.render(f"Score: {score}", True, WHITE)
+        t3 = font.render("R: Restart   Q/ESC: Quit", True, WHITE)
+        screen.blit(t1, t1.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50)))
+        screen.blit(t2, t2.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+        screen.blit(t3, t3.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 70)))
+
+        real_screen.fill((0, 0, 0))
+        real_screen.blit(pygame.transform.scale(screen, (SCALED_W, SCALED_H)), (OFFSET_X, OFFSET_Y))
+        pygame.display.flip()
+
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_r: return True
+                if e.key in (pygame.K_q, pygame.K_ESCAPE): pygame.quit(); sys.exit()
 
 def game_over_screen(score):
     screen.fill(GRAY)
@@ -911,10 +945,12 @@ def main(start_stage=1):
         missile_ships.append(MissileShip(WIDTH // 2 - M_SHIP_W // 2,     ty, FPS))
         missile_ships.append(MissileShip(WIDTH * 5 // 6 - M_SHIP_W // 2, ty, FPS))
 
-    def spawn_stage2():
-        nonlocal stage, stage2_spawned
+    def spawn_stage2(heal=True):
+        nonlocal stage, stage2_spawned, lives
         stage = 2
         stage2_spawned = True
+        if heal:
+            lives = min(lives + 2, 6)
         level_cfg["label"] = "Stage: 2"
 
         ty = 64
@@ -935,18 +971,73 @@ def main(start_stage=1):
 
         spawn_missile_ships_stage2()
 
-    def spawn_stage3():
-        nonlocal stage
+    def spawn_stage3(heal=True):
+        nonlocal stage, lives
         stage = 3
+        if heal:
+            lives = min(lives + 2, 6)
         level_cfg["label"] = "Stage: 3"
+        enemy_ships.clear()
+        missile_ships.clear()
+        enemy_attacks.clear()
+        missiles.clear()
+        b = Boss()
+        b.attack_timer = 5 * FPS
+        bosses.append(b)
+
+    def spawn_boss_minions(boss):
+        bx = int(boss.x)
+        by = int(boss.y)
+        diff = DIFF_SETTINGS.get("difficulty", "normal")
+
+        side_y      = by + (BOSS_H - M_SHIP_H) // 2
+        eship_y     = by + (BOSS_H - E_SHIP_H) // 2
+        below_m_y   = by + BOSS_H + 20
+        below_e_y   = by + BOSS_H + 20
+        diag_e_y    = by + BOSS_H + 60
+
+        left_m_x    = bx - M_SHIP_W - 20
+        right_m_x   = bx + BOSS_W + 20
+        center_m_x  = bx + (BOSS_W - M_SHIP_W) // 2
+
+        left_e_x    = bx - E_SHIP_W - 20
+        right_e_x   = bx + BOSS_W + 20
+        center_e_x  = bx + (BOSS_W - E_SHIP_W) // 2
+
+        all_enemy_rects = (
+            [s.rect for s in enemy_ships] +
+            [ms.rect for ms in missile_ships] +
+            [b.rect for b in bosses]
+        )
+
+        def occupied_m(tx, ty):
+            r = pygame.Rect(tx, ty, M_SHIP_W, M_SHIP_H)
+            return any(r.colliderect(er) for er in all_enemy_rects)
+
+        def occupied_e(tx, ty):
+            r = pygame.Rect(tx, ty, E_SHIP_W, E_SHIP_H)
+            return any(r.colliderect(er) for er in all_enemy_rects)
+
+        if diff == "easy":
+            if not occupied_e(left_e_x,   eship_y):  enemy_ships.append(EnemyShip(left_e_x,   eship_y))
+            if not occupied_e(right_e_x,  eship_y):  enemy_ships.append(EnemyShip(right_e_x,  eship_y))
+            if not occupied_m(center_m_x, below_m_y): missile_ships.append(MissileShip(center_m_x, below_m_y))
+        elif diff == "normal":
+            if not occupied_m(left_m_x,  side_y):  missile_ships.append(MissileShip(left_m_x,  side_y))
+            if not occupied_m(right_m_x, side_y):  missile_ships.append(MissileShip(right_m_x, side_y))
+            if not occupied_e(center_e_x, below_e_y): enemy_ships.append(EnemyShip(center_e_x, below_e_y))
+        else:  # hard
+            if not occupied_m(left_m_x,  side_y):   missile_ships.append(MissileShip(left_m_x,  side_y))
+            if not occupied_m(right_m_x, side_y):   missile_ships.append(MissileShip(right_m_x, side_y))
+            if not occupied_m(center_m_x, below_m_y): missile_ships.append(MissileShip(center_m_x, below_m_y))
+            if not occupied_e(left_e_x,  diag_e_y): enemy_ships.append(EnemyShip(left_e_x,  diag_e_y))
+            if not occupied_e(right_e_x, diag_e_y): enemy_ships.append(EnemyShip(right_e_x, diag_e_y))
 
     if start_stage >= 2:
         ships_spawned = 8
-        spawn_stage2()
+        spawn_stage2(heal=False)
     if start_stage >= 3:
-        spawn_stage3()
-
-    bosses.append(Boss())  # 테스트용: Stage 1 시작 시 보스 스폰
+        spawn_stage3(heal=False)
 
     while True:
         clock.tick(FPS)
@@ -1016,10 +1107,17 @@ def main(start_stage=1):
                 if stage_clear_timer >= 5 * FPS:
                     spawn_stage2()
 
-        if stage == 2 and stage2_missile_timer > 0:
-            stage2_missile_timer -= 1
-            if stage2_missile_timer == 0:
-                spawn_missile_ships_stage2()
+        if stage == 2:
+            if stage2_missile_timer > 0:
+                stage2_missile_timer -= 1
+                if stage2_missile_timer == 0:
+                    spawn_missile_ships_stage2()
+            if len(enemy_ships) == 0 and len(missile_ships) == 0 and stage2_missile_timer == 0:
+                spawn_stage3()
+
+        if stage == 3 and len(bosses) == 0 and len(enemy_ships) == 0 and len(missile_ships) == 0:
+            if you_win_screen(score): main()
+            return
 
         # --- 운석 생성 로직 ---
         meteor_spawn_timer += 1
@@ -1040,6 +1138,7 @@ def main(start_stage=1):
                 tr = ms.missile_target_right
                 missiles.append(Missile(ms.rect.left,  ms.rect.centery, tl[0], tl[1]))
                 missiles.append(Missile(ms.rect.right, ms.rect.centery, tr[0], tr[1]))
+                MISSILE_SOUND.play()
 
         for mis in missiles:
             mis.update()
@@ -1060,6 +1159,8 @@ def main(start_stage=1):
 
         for boss in bosses:
             boss.update(player_rect)
+            if boss.summon_event:
+                spawn_boss_minions(boss)
         bosses = [b for b in bosses if b.active]
 
         survived_meteors = []
@@ -1143,6 +1244,7 @@ def main(start_stage=1):
             invincible -= 1
 
         hit = False
+        meteor_hit = False
         for atk in enemy_attacks:
             if atk.active and not atk.reflected and player_rect.colliderect(atk.rect):
                 if parry_active_timer > 0:
@@ -1169,6 +1271,7 @@ def main(start_stage=1):
                         pass
                     elif can_take_damage:
                         hit = True
+                        meteor_hit = True
                         m.destroy()
                         METEOR_SOUND.play()
                         break
@@ -1234,6 +1337,8 @@ def main(start_stage=1):
             lives -= 1
             invincible = 90
             trigger_shake(15)
+            if not meteor_hit:
+                PLAYER_HIT_SOUND.play()
             if lives <= 0:
                 if game_over_screen(score): main()
                 return
