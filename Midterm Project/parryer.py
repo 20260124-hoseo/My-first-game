@@ -7,9 +7,15 @@ import math
 pygame.init()
 
 # --- 에셋 경로 ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-def _asset(*parts): return os.path.join(BASE_DIR, *parts)
+if hasattr(sys, '_MEIPASS'):
+    # EXE로 실행 중일 때 (임시 폴더 경로 사용)
+    BASE_DIR = sys._MEIPASS
+else:
+    # 일반 .py로 실행 중일 때
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+def _asset(*parts):
+    return os.path.join(BASE_DIR, *parts)
 
 
 
